@@ -1,13 +1,18 @@
 const express = require("express");
 const router = express.Router();
-const {
-  sendMessage,
-  getMessages,
-  getMessagesForUser,
-} = require("../controllers/messagesController");
+const messageController = require("../controllers/messagesController");
 
-router.post("/send", sendMessage);
-router.get("/messages", getMessages);
-router.get("/messages/:user", getMessagesForUser);
+// Send a new message
+router.post("/send", (req, res) => messageController.sendMessage(req, res));
+
+// Get all messages
+router.get("/messages", (req, res) =>
+  messageController.getAllMessages(req, res)
+);
+
+// Get messages for specific user
+router.get("/messages/:userId", (req, res) =>
+  messageController.getMessagesForUser(req, res)
+);
 
 module.exports = router;

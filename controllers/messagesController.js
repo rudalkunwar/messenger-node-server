@@ -1,56 +1,168 @@
+// controllers/messagesController.js
 const axios = require("axios");
+require("dotenv").config();
 
-// Replace with your Page Access Token
-const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN; // Preferably use environment variables for security
-
-// Controller to handle sending a message
-const sendMessage = async (req, res) => {
-  const { user, text } = req.body;
-
-  if (!user || !text) {
-    return res.status(400).json({ error: "User and text are required." });
+class MessageController {
+  constructor() {
+    this.pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
+    this.messages = new Map();
   }
 
-  const newMessage = { user, text, timestamp: new Date() };
+  // Validate if user exists and has interacted with the bot
+  async validateUser(userId) {
+    try {
+      const response = await axios.get(
+        `https://graph.facebook.com/v18.0/${userId}?access_token=${this.pageAccessToken}`
+      );
+      return true;
+    } catch (error) {
+      console.error("User validation error:", error.response?.data);
+      return false;
+    }
+  }
 
-  try {
-    // Make a POST request to Facebook's Graph API to send the message
-    const response = await axios.post(
-      `https://graph.facebook.com/v16.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
-      {
-        messaging_type: "RESPONSE",
-        recipient: { id: user },
-        message: { text: text },
+  // Send message to user through Facebook API
+  async sendMessage(req, res) {
+    const { userId, text } = req.body;
+
+    if (!userId || !text) {
+      return res.status(400).json({
+        success: false,
+        error: "User ID and text are required.",
+      });
+    }
+
+    try {
+      // Validate user first
+      const isValidUser = await this.validateUser(userId);
+      if (!isValidUser) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message:
+              "Cannot send message. The user must first interact with your bot through Messenger.",
+            details: "To send messages, users need to:",
+            steps: [
+              "1. Visit your Facebook page",
+              "2. Start a conversation with your page through Messenger",
+              "3. Send at least one message to your page",
+            ],
+          },
+        });
       }
-    );
 
-    console.log("Message sent successfully:", response.data);
-    res.status(200).json({
-      message: "Message sent successfully!",
-      newMessage,
-    });
-  } catch (error) {
-    console.error(
-      "Error sending message:",
-      error.response ? error.response.data : error.message
-    );
-    res.status(500).json({ error: "Failed to send message." });
+      // Send to Facebook Messenger using Facebook Graph API
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/me/messages?access_token=${this.pageAccessToken}`,
+        {
+          recipient: { id: userId },
+          message: { text: text },
+          messaging_type: "RESPONSE", // Specify messaging type for better delivery
+        }
+      );
+
+      // Store message
+      const newMessage = {
+        id: Date.now().toString(),
+        user: userId,
+        text,
+        timestamp: new Date(),
+        delivered: true,
+      };
+
+      if (!this.messages.has(userId)) {
+        this.messages.set(userId, []);
+      }
+      this.messages.get(userId).push(newMessage);
+
+      return res.status(200).json({
+        success: true,
+        message: "Message sent successfully!",
+        data: newMessage,
+        messengerResponse: response.data,
+      });
+    } catch (error) {
+      const errorResponse = error.response?.data?.error || error;
+      console.error("Messenger Error:", errorResponse);
+
+      // Handle specific Facebook API errors
+      if (errorResponse.code === 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "User not found or cannot receive messages",
+            details: "This might be because:",
+            reasons: [
+              "- The user hasn't messaged your page first",
+              "- The user has blocked your page",
+              "- The messaging window has expired (24 hours)",
+              "- The user ID is incorrect",
+            ],
+            originalError: errorResponse,
+          },
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: "Failed to send message",
+          details: errorResponse.message || "Unknown error occurred",
+          originalError: errorResponse,
+        },
+      });
+    }
   }
-};
 
-// Controller to get all messages
-const getMessages = (req, res) => {
-  res.status(200).json(messages);
-};
+  // Get all messages (from local storage)
+  getAllMessages(req, res) {
+    try {
+      const allMessages = Array.from(this.messages.values()).flat();
+      return res.status(200).json({
+        success: true,
+        data: allMessages,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to get messages",
+      });
+    }
+  }
 
-// Controller to get messages for a specific user
-const getMessagesForUser = (req, res) => {
-  const { user } = req.params;
-  const userMessages = messages.filter((msg) => msg.user === user);
-  res.status(200).json(userMessages);
-};
+  // Get messages for specific user (from local storage)
+  getMessagesForUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const userMessages = this.messages.get(userId) || [];
+      return res.status(200).json({
+        success: true,
+        data: userMessages,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to get user messages",
+      });
+    }
+  }
 
-// Simulating a simple storage for received messages (replace with DB in production)
-let messages = [];
+  // Store incoming message from webhook
+  storeIncomingMessage(userId, messageText, messageId) {
+    const newMessage = {
+      id: messageId || Date.now().toString(),
+      user: userId,
+      text: messageText,
+      timestamp: new Date(),
+      incoming: true,
+    };
 
-module.exports = { sendMessage, getMessages, getMessagesForUser };
+    if (!this.messages.has(userId)) {
+      this.messages.set(userId, []);
+    }
+    this.messages.get(userId).push(newMessage);
+    return newMessage;
+  }
+}
+
+module.exports = new MessageController();
