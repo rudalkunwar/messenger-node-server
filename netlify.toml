@@ -2,6 +2,3 @@
   command = "npm install"
   functions = "netlify-functions"
   publish = "public"
-
-[[plugins]]
-  package = "@netlify/plugin-functions-installation"
