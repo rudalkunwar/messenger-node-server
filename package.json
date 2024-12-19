@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "@netlify/functions": "^2.8.2",
+    "@types/express": "^5.0.0",
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "netlify-cli": "^17.38.1",
     "nodemon": "^3.1.9",
@@ -11,6 +13,7 @@
   "main": "index.js",
   "scripts": {
     "build": "netlify deploy --prod",
+    "dev": "netlify dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
