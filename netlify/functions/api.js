@@ -16,6 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 app.get("/", (req, res) => {
   res.send("App is running hehehehheheheh");
 });
+
 app.use("/api/webhook", webhookRoutes);
 app.use("/api/messages", messageRoutes);
 
